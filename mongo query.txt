@@ -1,0 +1,119 @@
+db.air_routes.aggregate([
+{$lookup: {
+  from: 'air_alliances',
+  localField: 'airline.name',
+  foreignField: 'airlines',
+  as: 'alliance'
+}},
+{$match: {airplane: {$in: ["380","747"]}, alliance: {$ne: []}}},
+{$project: {airplane: 1, x: "$alliance.name"}},
+{$group: {
+  _id: "$x",
+  count: {
+    $sum: 1
+  }
+}},
+{$sort : {count:-1}}
+],{explain: true}).pretty()
+
+
+
+
+db.air_alliances.aggregate([{
+  $match: { name: "OneWorld" }
+}, {
+  $graphLookup: {
+    startWith: "$airlines",
+    from: "air_airlines",
+    connectFromField: "name",
+    connectToField: "name",
+    as: "airlines",
+    maxDepth: 0,
+    restrictSearchWithMatch: {
+      country: { $in: ["Germany", "Spain", "Canada"] }
+    }
+  }
+}, {
+  $graphLookup: {
+    startWith: "$airlines.base",
+    from: "air_routes",
+    connectFromField: "dst_airport",
+    connectToField: "src_airport",
+    as: "connections",
+    maxDepth: 1
+  }
+}, {
+  $project: {
+    validAirlines: "$airlines.name",
+    "connections.dst_airport": 1,
+    "connections.airline.name": 1
+  }
+},
+{ $unwind: "$connections" },
+{
+  $project: {
+    isValid: { $in: ["$connections.airline.name", "$validAirlines"] },
+    "connections.dst_airport": 1
+  }
+},
+{ $match: { isValid: true } },
+{ $group: { _id: "$connections.dst_airport" } },
+{$count: "x"}
+])
+
+
+
+
+db.movies.aggregate([
+{$match: {metacritic:{$gt:0}}},
+{$project:{"title":1, "imdb.rating":1, metacritic:1}},
+{$facet:{
+  Byrating: [ {$sort:{"imdb.rating":-1}},
+  {$limit:10}],
+  Bymetacritic: [ {$sort:{"metacritic":-1}},
+  {$limit:10}]
+}},
+{$project: {
+  count: {$setIntersection:["$Byrating","$Bymetacritic"]}
+}}
+]).pretty()
+
+
+db.movies.aggregate([
+  {"$match": {"field_a": {"$gt": 1983}}},
+  {"$project": { "field_a": "$field_a.1", "field_b": 1, "field_c": 1  }},
+  {"$replaceRoot":{"newRoot": {"_id": "$field_c", "field_b": "$field_b"}}},
+  {"$out": "coll2"},
+  {"$match": {"_id.field_f": {"$gt": 1}}},
+  {"$replaceRoot":{"newRoot": {"_id": "$field_b", "field_c": "$_id"}}}
+]).pretty()
+
+
+
+
+db.test.aggregate([
+    {"$project": {"a": {"$max": "$a"}}},
+    {"$group": {"_id": "$$ROOT._id", "all_as": {"$sum": "$a"}}}
+]).pretty()
+
+
+
+db.air_routes.aggregate([
+{$match:{$and:[{src_airport:{$in:["JFK","LHR"]}}, {dst_airport:{$in:["JFK","LHR"]}}]}},
+{$lookup: {
+  from: 'air_alliances',
+  localField: 'airline.name',
+  foreignField: 'airlines',
+  as: 'alliance'
+}},
+{$match: {alliance:{$ne:[]}}},
+{$project: {airline: 1, alliance: { $arrayElemAt: ["$alliance.name", 0] }}},
+{$group: {
+  _id: {x:"$airline.id",
+  y: "$alliance"}
+}},
+{
+  $sortByCount: "$_id.y"
+}
+]).pretty()
+
